@@ -3,160 +3,167 @@ import {
   View, Text, FlatList, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform, StatusBar,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
 import { useTheme, FONTS, RADIUS, shadow } from '../context/ThemeContext';
+import { usePosts } from '../context/PostsContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PostDetails'>;
 
-const MOCK_POSTS: Record<string, { content: string; likes: number; timestamp: string }> = {
-  '1':  { content: "I'm really stressed about school deadlines.", likes: 4, timestamp: '2h ago' },
-  '2':  { content: 'Anyone else struggling with React Native? 😅', likes: 8, timestamp: '4h ago' },
-  '3':  { content: 'Sometimes college feels overwhelming but then I remember how far I\'ve come.', likes: 12, timestamp: '6h ago' },
-  '4':  { content: 'I finally talked to someone about my anxiety. It helped more than I expected.', likes: 31, timestamp: '1d ago' },
-  '5':  { content: "Does anyone else feel like they're pretending to have it together?", likes: 47, timestamp: '2d ago' },
-  't1': { content: 'Reminder: You are doing better than you think. 💙', likes: 89, timestamp: '3h ago' },
-  't2': { content: "Failed my exam today. Don't know how to tell my parents.", likes: 23, timestamp: '5h ago' },
-  't3': { content: 'I made a friend online who genuinely listens. It means more than they know.', likes: 62, timestamp: '8h ago' },
-  't4': { content: "Can we normalize saying 'I don't know' without shame?", likes: 55, timestamp: '12h ago' },
-};
-
-interface Comment {
-  id: string; text: string; timestamp: string; likes: number; likedByMe: boolean;
-}
-
-const INITIAL_COMMENTS: Comment[] = [
-  { id: '1', text: "You're not alone. We all feel this way sometimes 💙", timestamp: '1h ago', likes: 3, likedByMe: false },
-  { id: '2', text: 'I feel the same. Hang in there!', timestamp: '1h ago', likes: 1, likedByMe: false },
-];
-
 export default function PostDetailsScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
-  const SHADOW = shadow(colors.isDark);
+  const S = shadow(colors.isDark);
   const insets = useSafeAreaInsets();
-  const { postId } = route.params;
-  const post = MOCK_POSTS[postId] ?? { content: 'Post not found.', likes: 0, timestamp: '' };
+  const { posts, toggleLike, addComment, toggleCommentLike } = usePosts();
 
-  const [comments, setComments] = useState<Comment[]>(INITIAL_COMMENTS);
-  const [commentText, setCommentText] = useState('');
-  const [postLikes, setPostLikes] = useState(post.likes);
-  const [postLiked, setPostLiked] = useState(false);
+  const post = posts.find(p => p.id === route.params.postId);
+  const [text, setText] = useState('');
 
-  const addComment = () => {
-    if (!commentText.trim()) return;
-    setComments(p => [...p, {
-      id: Date.now().toString(), text: commentText.trim(),
-      timestamp: 'just now', likes: 0, likedByMe: false,
-    }]);
-    setCommentText('');
+  const handleSend = () => {
+    if (!text.trim() || !post) return;
+    addComment(post.id, text.trim());
+    setText('');
   };
 
-  const likeComment = (id: string) =>
-    setComments(p => p.map(c =>
-      c.id === id ? { ...c, likes: c.likedByMe ? c.likes - 1 : c.likes + 1, likedByMe: !c.likedByMe } : c
-    ));
+  if (!post) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.bg }]}>
+        <Text style={{ color: colors.textPrimary, padding: 20 }}>Post not found.</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       <StatusBar barStyle={colors.statusBar} backgroundColor={colors.bg} />
 
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 12, backgroundColor: colors.bgCard, borderBottomColor: colors.border }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={[styles.backIcon, { color: colors.tealDark }]}>←</Text>
-          <Text style={[styles.backText, { color: colors.tealDark }]}>Back</Text>
+      <View style={[styles.header, {
+        paddingTop: insets.top + 12,
+        backgroundColor: colors.bgCard,
+        borderBottomColor: colors.border,
+      }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Feather name="arrow-left" size={22} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Post</Text>
-        <View style={{ width: 70 }} />
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Confession</Text>
+        <View style={{ width: 36 }} />
       </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        keyboardVerticalOffset={0}
       >
         <FlatList
-          data={comments}
-          keyExtractor={i => i.id}
+          data={post.comments}
+          keyExtractor={c => c.id}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={{ padding: 20, paddingBottom: 20 }}
           ListHeaderComponent={
             <>
-              <View style={[styles.postCard, SHADOW.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
-                <View style={styles.anonRow}>
-                  <View style={[styles.anonDot, { backgroundColor: colors.teal }]} />
-                  <Text style={[styles.anonLabel, { color: colors.textSecondary }]}>Anonymous</Text>
-                  <Text style={[styles.postTime, { color: colors.textMuted }]}>{post.timestamp}</Text>
+              {/* Post card */}
+              <View style={[styles.postCard, S.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+                <View style={styles.authorRow}>
+                  <View style={[styles.avatar, { backgroundColor: colors.teal }]}>
+                    <Text style={styles.avatarEmoji}>{post.authorEmoji}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.authorName, { color: colors.textPrimary }]}>{post.author}</Text>
+                    <View style={styles.timeRow}>
+                      <Feather name="clock" size={11} color={colors.textMuted} />
+                      <Text style={[styles.timestamp, { color: colors.textMuted }]}>{post.timestamp}</Text>
+                    </View>
+                  </View>
                 </View>
+
                 <Text style={[styles.postContent, { color: colors.textPrimary }]}>{post.content}</Text>
-                <View style={styles.postActions}>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, {
-                      backgroundColor: postLiked ? colors.redDim : colors.bgSurface,
-                      borderColor: postLiked ? colors.red + '55' : colors.border,
-                    }]}
-                    onPress={() => { setPostLikes(n => postLiked ? n - 1 : n + 1); setPostLiked(v => !v); }}
-                  >
-                    <Text style={styles.actionIcon}>{postLiked ? '❤️' : '🤍'}</Text>
-                    <Text style={[styles.actionCount, { color: postLiked ? colors.red : colors.textSecondary }]}>{postLikes}</Text>
+
+                <View style={styles.actions}>
+                  <TouchableOpacity style={styles.actionBtn} onPress={() => toggleLike(post.id)}>
+                    <Feather name="heart" size={16} color={post.likedByMe ? colors.red : colors.textSecondary} />
+                    <Text style={[styles.actionCount, { color: post.likedByMe ? colors.red : colors.textSecondary }]}>
+                      {post.likes}
+                    </Text>
                   </TouchableOpacity>
-                  <View style={[styles.actionBtn, { backgroundColor: colors.bgSurface, borderColor: colors.border }]}>
-                    <Text style={styles.actionIcon}>💬</Text>
-                    <Text style={[styles.actionCount, { color: colors.textSecondary }]}>{comments.length}</Text>
+                  <View style={styles.actionBtn}>
+                    <Feather name="message-circle" size={16} color={colors.textSecondary} />
+                    {/* Always reflects the real comment count */}
+                    <Text style={[styles.actionCount, { color: colors.textSecondary }]}>
+                      {post.comments.length}
+                    </Text>
                   </View>
                 </View>
               </View>
 
-              <View style={styles.commentsHeader}>
-                <Text style={[styles.commentsTitle, { color: colors.textPrimary }]}>Comments</Text>
-                <View style={[styles.countBadge, { backgroundColor: colors.tealDim }]}>
-                  <Text style={[styles.countText, { color: colors.teal }]}>{comments.length}</Text>
-                </View>
-              </View>
+              {/* Comments heading */}
+              <Text style={[styles.commentsLabel, { color: colors.textPrimary }]}>
+                Comments{' '}
+                <Text style={{ color: colors.teal }}>({post.comments.length})</Text>
+              </Text>
             </>
           }
+          ListEmptyComponent={
+            <View style={styles.noComments}>
+              <Feather name="message-circle" size={32} color={colors.textMuted} />
+              <Text style={[styles.noCommentsText, { color: colors.textMuted }]}>
+                No comments yet. Be the first!
+              </Text>
+            </View>
+          }
           renderItem={({ item }) => (
-            <View style={[styles.commentCard, SHADOW.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <View style={[styles.commentCard, S.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
               <View style={styles.commentTop}>
-                <View style={styles.anonRow}>
-                  <View style={[styles.anonDot, { backgroundColor: colors.teal }]} />
-                  <Text style={[styles.anonLabel, { color: colors.textSecondary }]}>Anon</Text>
+                <View style={[styles.commentAvatar, { backgroundColor: colors.teal }]}>
+                  <Text style={styles.commentAvatarEmoji}>{item.authorEmoji}</Text>
                 </View>
-                <Text style={[styles.postTime, { color: colors.textMuted }]}>{item.timestamp}</Text>
+                <View style={styles.timeRow}>
+                  <Feather name="clock" size={10} color={colors.textMuted} />
+                  <Text style={[styles.timestamp, { color: colors.textMuted }]}>{item.timestamp}</Text>
+                </View>
               </View>
               <Text style={[styles.commentText, { color: colors.textPrimary }]}>{item.text}</Text>
               <TouchableOpacity
-                style={[styles.actionBtn, {
-                  alignSelf: 'flex-start',
-                  backgroundColor: item.likedByMe ? colors.redDim : colors.bgSurface,
-                  borderColor: item.likedByMe ? colors.red + '55' : colors.border,
-                }]}
-                onPress={() => likeComment(item.id)}
+                style={styles.actionBtn}
+                onPress={() => toggleCommentLike(post.id, item.id)}
               >
-                <Text style={styles.actionIcon}>{item.likedByMe ? '❤️' : '🤍'}</Text>
-                <Text style={[styles.actionCount, { color: item.likedByMe ? colors.red : colors.textSecondary }]}>{item.likes}</Text>
+                <Feather name="heart" size={14} color={item.likedByMe ? colors.red : colors.textSecondary} />
+                <Text style={[styles.actionCount, { color: item.likedByMe ? colors.red : colors.textSecondary }]}>
+                  {item.likes}
+                </Text>
               </TouchableOpacity>
             </View>
           )}
         />
 
-        <View style={[styles.inputBar, { backgroundColor: colors.bgCard, borderTopColor: colors.border, paddingBottom: insets.bottom + 10 }]}>
+        {/* Input bar */}
+        <View style={[styles.inputBar, {
+          backgroundColor: colors.bgCard,
+          borderTopColor: colors.border,
+          paddingBottom: insets.bottom + 8,
+        }]}>
           <TextInput
-            style={[styles.input, { backgroundColor: colors.bgSurface, borderColor: colors.border, color: colors.textPrimary }]}
+            style={[styles.inputField, {
+              backgroundColor: colors.bgInput,
+              borderColor: colors.border,
+              color: colors.textPrimary,
+            }]}
             placeholder="Write something supportive..."
-            placeholderTextColor={colors.textMuted}
-            value={commentText}
-            onChangeText={setCommentText}
-            multiline maxLength={200}
+            placeholderTextColor={colors.textPlaceholder}
+            value={text}
+            onChangeText={setText}
+            multiline
+            maxLength={200}
           />
           <TouchableOpacity
-            style={[styles.sendBtn, { backgroundColor: commentText.trim() ? colors.teal : colors.textMuted }]}
-            onPress={addComment}
-            disabled={!commentText.trim()}
+            style={[styles.sendBtn, { backgroundColor: text.trim() ? colors.teal : colors.bgSurface }]}
+            onPress={handleSend}
+            disabled={!text.trim()}
           >
-            <Text style={styles.sendIcon}>↑</Text>
+            <Feather name="send" size={18} color={text.trim() ? '#fff' : colors.textMuted} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -164,4 +171,44 @@ export default function PostDetailsScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({ container: { flex: 1 }, header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 14, borderBottomWidth: 1, }, backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, width: 70 }, backIcon: { fontSize: 20 }, backText: { fontSize: 15, ...FONTS.subheading }, headerTitle: { fontSize: 17, ...FONTS.heading }, listContent: { padding: 20, paddingBottom: 16 }, postCard: { borderRadius: RADIUS.lg, padding: 20, marginBottom: 24, borderWidth: 1 }, anonRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }, anonDot: { width: 8, height: 8, borderRadius: 4 }, anonLabel: { fontSize: 12, ...FONTS.caption, flex: 1 }, postTime: { fontSize: 11 }, postContent: { fontSize: 17, lineHeight: 27, marginBottom: 18 }, postActions: { flexDirection: 'row', gap: 10 }, actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full, borderWidth: 1, }, actionIcon: { fontSize: 14 }, actionCount: { fontSize: 13, ...FONTS.caption }, commentsHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }, commentsTitle: { fontSize: 17, ...FONTS.heading }, countBadge: { borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 3 }, countText: { fontSize: 12, ...FONTS.subheading }, commentCard: { borderRadius: RADIUS.md, padding: 14, marginBottom: 10, borderWidth: 1 }, commentTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }, commentText: { fontSize: 14, lineHeight: 21, marginBottom: 10 }, inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 16, paddingTop: 12, borderTopWidth: 1, }, input: { flex: 1, borderRadius: RADIUS.lg, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 10, fontSize: 14, maxHeight: 100, }, sendBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }, sendIcon: { fontSize: 20, color: '#fff', ...FONTS.heading }, });
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 20, paddingBottom: 14, borderBottomWidth: 1,
+  },
+  backBtn: { width: 36 },
+  headerTitle: { fontSize: 17, ...FONTS.heading },
+  postCard: { borderRadius: RADIUS.lg, padding: 16, marginBottom: 20, borderWidth: 1 },
+  authorRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  avatar: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+  avatarEmoji: { fontSize: 22 },
+  authorName: { fontSize: 15, ...FONTS.subheading },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  timestamp: { fontSize: 12 },
+  postContent: { fontSize: 15, lineHeight: 24, marginBottom: 16 },
+  actions: { flexDirection: 'row', gap: 20 },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  actionCount: { fontSize: 14, ...FONTS.medium },
+  commentsLabel: { fontSize: 16, ...FONTS.heading, marginBottom: 14 },
+  noComments: { alignItems: 'center', paddingVertical: 32, gap: 10 },
+  noCommentsText: { fontSize: 14 },
+  commentCard: { borderRadius: RADIUS.md, padding: 14, marginBottom: 10, borderWidth: 1 },
+  commentTop: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', marginBottom: 8,
+  },
+  commentAvatar: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  commentAvatarEmoji: { fontSize: 14 },
+  commentText: { fontSize: 14, lineHeight: 20, marginBottom: 8 },
+  inputBar: {
+    flexDirection: 'row', alignItems: 'flex-end', gap: 10,
+    paddingHorizontal: 16, paddingTop: 10, borderTopWidth: 1,
+  },
+  inputField: {
+    flex: 1, borderRadius: RADIUS.lg, borderWidth: 1,
+    paddingHorizontal: 14, paddingVertical: 10,
+    fontSize: 14, maxHeight: 90,
+  },
+  sendBtn: { width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center' },
+});

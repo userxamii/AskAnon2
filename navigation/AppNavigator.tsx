@@ -3,11 +3,13 @@ import { View, Text, StyleSheet, Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Feather } from '@expo/vector-icons';
 
 import SplashScreen      from '../screens/SplashScreen';
 import AuthScreen        from '../screens/AuthScreen';
 import DashboardScreen   from '../screens/DashboardScreen';
 import PostsScreen       from '../screens/PostsScreen';
+import SavedScreen       from '../screens/SavedScreen';
 import ProfileScreen     from '../screens/ProfileScreen';
 import PostDetailsScreen from '../screens/PostDetailsScreen';
 
@@ -16,19 +18,6 @@ import { useTheme, FONTS } from '../context/ThemeContext';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab   = createBottomTabNavigator<TabParamList>();
-
-function TabIcon({ label, icon, focused, colors }: {
-  label: string; icon: string; focused: boolean; colors: any;
-}) {
-  return (
-    <View style={styles.tabIconWrap}>
-      <Text style={[styles.tabEmoji, { opacity: focused ? 1 : 0.4 }]}>{icon}</Text>
-      <Text style={[styles.tabLabel, { color: focused ? colors.teal : colors.textMuted }]}>
-        {label}
-      </Text>
-    </View>
-  );
-}
 
 function MainTabs() {
   const { colors } = useTheme();
@@ -61,7 +50,10 @@ function MainTabs() {
         component={DashboardScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon label="Home" icon="📈" focused={focused} colors={colors} />
+            <View style={styles.tabItem}>
+              <Feather name="trending-up" size={22} color={focused ? colors.teal : colors.textMuted} />
+              <Text style={[styles.tabLabel, { color: focused ? colors.teal : colors.textMuted }]}>Home</Text>
+            </View>
           ),
         }}
       />
@@ -70,7 +62,22 @@ function MainTabs() {
         component={PostsScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon label="Posts" icon="☰" focused={focused} colors={colors} />
+            <View style={styles.tabItem}>
+              <Feather name="list" size={22} color={focused ? colors.teal : colors.textMuted} />
+              <Text style={[styles.tabLabel, { color: focused ? colors.teal : colors.textMuted }]}>Posts</Text>
+            </View>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Saved"
+        component={SavedScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.tabItem}>
+              <Feather name="bookmark" size={22} color={focused ? colors.teal : colors.textMuted} />
+              <Text style={[styles.tabLabel, { color: focused ? colors.teal : colors.textMuted }]}>Saved</Text>
+            </View>
           ),
         }}
       />
@@ -79,7 +86,10 @@ function MainTabs() {
         component={ProfileScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon label="Profile" icon="👤" focused={focused} colors={colors} />
+            <View style={styles.tabItem}>
+              <Feather name="user" size={22} color={focused ? colors.teal : colors.textMuted} />
+              <Text style={[styles.tabLabel, { color: focused ? colors.teal : colors.textMuted }]}>Profile</Text>
+            </View>
           ),
         }}
       />
@@ -92,19 +102,45 @@ export default function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator
         initialRouteName="Splash"
-        screenOptions={{ headerShown: false }}
+        screenOptions={{
+          headerShown: false,
+          // Smooth fade+slide transition for all stack screens
+          animation: 'fade_from_bottom',
+          animationDuration: 280,
+          contentStyle: { backgroundColor: 'transparent' },
+        }}
       >
-        <Stack.Screen name="Splash"      component={SplashScreen} />
-        <Stack.Screen name="Auth"        component={AuthScreen} />
-        <Stack.Screen name="Main"        component={MainTabs} />
-        <Stack.Screen name="PostDetails" component={PostDetailsScreen} />
+        <Stack.Screen
+          name="Splash"
+          component={SplashScreen}
+          options={{ gestureEnabled: false, animation: 'fade' }}
+        />
+        <Stack.Screen
+          name="Auth"
+          component={AuthScreen}
+          options={{ gestureEnabled: false, animation: 'fade' }}
+        />
+        <Stack.Screen
+          name="Main"
+          component={MainTabs}
+          options={{ gestureEnabled: false, animation: 'fade' }}
+        />
+        <Stack.Screen
+          name="PostDetails"
+          component={PostDetailsScreen}
+          options={{
+            animation: 'slide_from_right',
+            animationDuration: 260,
+            gestureEnabled: true,
+            gestureDirection: 'horizontal',
+          }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  tabIconWrap: { alignItems: 'center', justifyContent: 'center', gap: 2 },
-  tabEmoji:   { fontSize: 20 },
-  tabLabel:   { fontSize: 11, ...FONTS.medium },
+  tabItem:  { alignItems: 'center', justifyContent: 'center', gap: 2 },
+  tabLabel: { fontSize: 11, ...FONTS.medium },
 });
