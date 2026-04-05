@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   Platform, StatusBar, ScrollView, Switch, Animated,
-  Modal, TextInput, Alert,
+  Modal, Alert, FlatList,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,19 +12,21 @@ import { useTheme, FONTS, RADIUS, shadow } from '../context/ThemeContext';
 import { usePosts } from '../context/PostsContext';
 import { RootStackParamList } from '../types/navigation';
 import PostCard from '../components/PostCard';
+import { supabase } from '../lib/supabase';
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 // ─── Privacy Settings Modal ───────────────────────────────────────────────────
+
 function PrivacyModal({ visible, onClose, colors, S }: any) {
   const [showOnline, setShowOnline] = useState(true);
-  const [allowDMs, setAllowDMs]     = useState(false);
-  const [dataShare, setDataShare]   = useState(false);
+  const [allowDMs,   setAllowDMs]   = useState(false);
+  const [dataShare,  setDataShare]  = useState(false);
 
   const rows = [
-    { label: 'Show online status', hint: 'Let others see when you are active', value: showOnline, setter: setShowOnline },
-    { label: 'Allow direct messages', hint: 'Receive messages from other users', value: allowDMs, setter: setAllowDMs },
-    { label: 'Anonymous data sharing', hint: 'Help improve the app (no personal data)', value: dataShare, setter: setDataShare },
+    { label: 'Show online status',    hint: 'Let others see when you are active',        value: showOnline, setter: setShowOnline },
+    { label: 'Allow direct messages', hint: 'Receive messages from other users',         value: allowDMs,   setter: setAllowDMs   },
+    { label: 'Anonymous data sharing',hint: 'Help improve the app (no personal data)',   value: dataShare,  setter: setDataShare  },
   ];
 
   return (
@@ -65,19 +67,22 @@ function PrivacyModal({ visible, onClose, colors, S }: any) {
           <Text style={[modal.section, { color: colors.textMuted, marginTop: 20 }]}>ACCOUNT</Text>
           <TouchableOpacity
             style={[modal.dangerBtn, { borderColor: colors.red + '66', backgroundColor: colors.redDim }]}
-            onPress={() => Alert.alert('Delete Account', 'This will permanently delete your account and all your posts. This cannot be undone.', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Delete', style: 'destructive', onPress: () => {} },
-            ])}
+            onPress={() =>
+              Alert.alert(
+                'Delete Account',
+                'This will permanently delete your account and all your posts. This cannot be undone.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: () => {} },
+                ],
+              )
+            }
           >
             <Feather name="trash-2" size={16} color={colors.red} />
             <Text style={[modal.dangerText, { color: colors.red }]}>Delete Account</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[modal.saveBtn, { backgroundColor: colors.teal }]}
-            onPress={onClose}
-          >
+          <TouchableOpacity style={[modal.saveBtn, { backgroundColor: colors.teal }]} onPress={onClose}>
             <Text style={modal.saveBtnText}>Save Changes</Text>
           </TouchableOpacity>
         </View>
@@ -87,8 +92,9 @@ function PrivacyModal({ visible, onClose, colors, S }: any) {
 }
 
 // ─── Hidden Posts Modal ───────────────────────────────────────────────────────
+
 function HiddenPostsModal({ visible, onClose, colors, S }: any) {
-  const { posts, hiddenIds, toggleLike, toggleHide } = usePosts();
+  const { posts, hiddenIds, toggleHide } = usePosts();
   const hiddenPosts = posts.filter(p => hiddenIds.includes(p.id));
 
   return (
@@ -111,33 +117,40 @@ function HiddenPostsModal({ visible, onClose, colors, S }: any) {
               <Feather name="eye-off" size={40} color={colors.textMuted} />
               <Text style={[modal.emptyTitle, { color: colors.textPrimary }]}>No hidden posts</Text>
               <Text style={[modal.emptyHint, { color: colors.textSecondary }]}>
-                Posts you hide will appear here. Tap the eye icon on any post to hide it.
+                Posts you hide will appear here.
               </Text>
             </View>
           ) : (
             <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false}>
               {hiddenPosts.map(post => (
-                <View key={post.id} style={[modal.hiddenRow, { borderColor: colors.border, backgroundColor: colors.bgInput }]}>
+                <View
+                  key={post.id}
+                  style={[modal.hiddenRow, { borderColor: colors.border, backgroundColor: colors.bgInput }]}
+                >
                   <View style={{ flex: 1 }}>
-                    <Text style={[{ color: colors.textPrimary, fontSize: 13, fontWeight: '600' }]}>{post.author}</Text>
-                    <Text style={[{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }]} numberOfLines={2}>{post.content}</Text>
+                    <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '600' }}>
+                      {post.author}
+                    </Text>
+                    <Text
+                      style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}
+                      numberOfLines={2}
+                    >
+                      {post.content}
+                    </Text>
                   </View>
                   <TouchableOpacity
                     style={[modal.unhideBtn, { backgroundColor: colors.tealDim }]}
                     onPress={() => toggleHide(post.id)}
                   >
                     <Feather name="eye" size={14} color={colors.teal} />
-                    <Text style={[{ color: colors.teal, fontSize: 12, fontWeight: '600' }]}>Unhide</Text>
+                    <Text style={{ color: colors.teal, fontSize: 12, fontWeight: '600' }}>Unhide</Text>
                   </TouchableOpacity>
                 </View>
               ))}
             </ScrollView>
           )}
 
-          <TouchableOpacity
-            style={[modal.saveBtn, { backgroundColor: colors.teal }]}
-            onPress={onClose}
-          >
+          <TouchableOpacity style={[modal.saveBtn, { backgroundColor: colors.teal }]} onPress={onClose}>
             <Text style={modal.saveBtnText}>Close</Text>
           </TouchableOpacity>
         </View>
@@ -147,27 +160,28 @@ function HiddenPostsModal({ visible, onClose, colors, S }: any) {
 }
 
 // ─── App Settings Modal ───────────────────────────────────────────────────────
+
 function AppSettingsModal({ visible, onClose, colors }: any) {
-  const [notifPosts, setNotifPosts]         = useState(true);
-  const [notifComments, setNotifComments]   = useState(true);
-  const [notifLikes, setNotifLikes]         = useState(false);
-  const [compactMode, setCompactMode]       = useState(false);
-  const [autoPlayGifs, setAutoPlayGifs]     = useState(true);
+  const [notifPosts,    setNotifPosts]    = useState(true);
+  const [notifComments, setNotifComments] = useState(true);
+  const [notifLikes,    setNotifLikes]    = useState(false);
+  const [compactMode,   setCompactMode]   = useState(false);
+  const [autoPlayGifs,  setAutoPlayGifs]  = useState(true);
 
   const rows = [
     {
       section: 'NOTIFICATIONS',
       items: [
-        { label: 'New posts nearby', hint: 'Get notified about trending confessions', value: notifPosts, setter: setNotifPosts },
-        { label: 'Comments on your posts', hint: 'When someone replies to your confession', value: notifComments, setter: setNotifComments },
-        { label: 'Likes on your posts', hint: 'When someone likes your confession', value: notifLikes, setter: setNotifLikes },
+        { label: 'New posts nearby',          hint: 'Get notified about trending confessions',   value: notifPosts,    setter: setNotifPosts    },
+        { label: 'Comments on your posts',    hint: 'When someone replies to your confession',   value: notifComments, setter: setNotifComments },
+        { label: 'Likes on your posts',       hint: 'When someone likes your confession',        value: notifLikes,    setter: setNotifLikes    },
       ],
     },
     {
       section: 'DISPLAY',
       items: [
-        { label: 'Compact mode', hint: 'Show more posts with less spacing', value: compactMode, setter: setCompactMode },
-        { label: 'Auto-play GIFs', hint: 'Automatically animate GIF images', value: autoPlayGifs, setter: setAutoPlayGifs },
+        { label: 'Compact mode',  hint: 'Show more posts with less spacing',    value: compactMode,  setter: setCompactMode  },
+        { label: 'Auto-play GIFs',hint: 'Automatically animate GIF images',     value: autoPlayGifs, setter: setAutoPlayGifs },
       ],
     },
   ];
@@ -216,10 +230,7 @@ function AppSettingsModal({ visible, onClose, colors }: any) {
             ))}
           </ScrollView>
 
-          <TouchableOpacity
-            style={[modal.saveBtn, { backgroundColor: colors.teal }]}
-            onPress={onClose}
-          >
+          <TouchableOpacity style={[modal.saveBtn, { backgroundColor: colors.teal }]} onPress={onClose}>
             <Text style={modal.saveBtnText}>Save Changes</Text>
           </TouchableOpacity>
         </View>
@@ -229,17 +240,21 @@ function AppSettingsModal({ visible, onClose, colors }: any) {
 }
 
 // ─── Main Profile Screen ──────────────────────────────────────────────────────
+
 export default function ProfileScreen() {
   const navigation = useNavigation<NavProp>();
   const { colors, mode, toggleTheme, nickname, flashAnim } = useTheme();
   const S = shadow(colors.isDark);
   const insets = useSafeAreaInsets();
   const TAB_H = Platform.OS === 'ios' ? 82 : 64;
-  const { posts } = usePosts();
 
-  const [showPrivacy, setShowPrivacy]         = useState(false);
-  const [showHidden, setShowHidden]           = useState(false);
+  // ── Pull real data from context ─────────────────────────────────────────────
+  const { myPosts, myStats, toggleLike } = usePosts();
+
+  const [showPrivacy,     setShowPrivacy]     = useState(false);
+  const [showHidden,      setShowHidden]      = useState(false);
   const [showAppSettings, setShowAppSettings] = useState(false);
+  const [showMyPosts,     setShowMyPosts]     = useState(false);
 
   const handleToggle = () => {
     Animated.sequence([
@@ -249,8 +264,24 @@ export default function ProfileScreen() {
     toggleTheme();
   };
 
-  const handleLogOut = () => {
-    navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+  // ── Logout — sign out from Supabase, AppNavigator handles redirect ──────────
+  const handleLogOut = async () => {
+    Alert.alert(
+      'Log Out',
+      'Are you sure you want to log out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log Out',
+          style: 'destructive',
+          onPress: async () => {
+            await supabase.auth.signOut();
+            // AppNavigator's onAuthStateChange listener detects session = null
+            // and resets the stack to Splash automatically. No navigation call needed.
+          },
+        },
+      ],
+    );
   };
 
   const settingsRows = [
@@ -267,6 +298,13 @@ export default function ProfileScreen() {
           thumbColor={mode === 'dark' ? colors.teal : colors.textMuted}
         />
       ),
+    },
+    {
+      featherName: 'file-text',
+      label: 'My Posts',
+      hint: `${myStats.postCount} confession${myStats.postCount !== 1 ? 's' : ''} you've made`,
+      onPress: () => setShowMyPosts(true),
+      right: <Feather name="chevron-right" size={20} color={colors.textMuted} />,
     },
     {
       featherName: 'shield',
@@ -301,23 +339,54 @@ export default function ProfileScreen() {
       />
 
       {/* Modals */}
-      <PrivacyModal
-        visible={showPrivacy}
-        onClose={() => setShowPrivacy(false)}
-        colors={colors}
-        S={S}
-      />
-      <HiddenPostsModal
-        visible={showHidden}
-        onClose={() => setShowHidden(false)}
-        colors={colors}
-        S={S}
-      />
-      <AppSettingsModal
-        visible={showAppSettings}
-        onClose={() => setShowAppSettings(false)}
-        colors={colors}
-      />
+      <PrivacyModal     visible={showPrivacy}     onClose={() => setShowPrivacy(false)}     colors={colors} S={S} />
+      <HiddenPostsModal visible={showHidden}       onClose={() => setShowHidden(false)}       colors={colors} S={S} />
+      <AppSettingsModal visible={showAppSettings}  onClose={() => setShowAppSettings(false)}  colors={colors} />
+
+      {/* My Posts Modal */}
+      <Modal visible={showMyPosts} animationType="slide" transparent onRequestClose={() => setShowMyPosts(false)}>
+        <View style={modal.overlay}>
+          <View style={[modal.sheet, { backgroundColor: colors.bg, borderColor: colors.border, flex: 1, marginTop: 60 }]}>
+            <View style={[modal.handle, { backgroundColor: colors.border }]} />
+            <View style={[modal.titleRow, { paddingHorizontal: 4 }]}>
+              <View style={[modal.iconBox, { backgroundColor: colors.tealDim }]}>
+                <Feather name="file-text" size={18} color={colors.teal} />
+              </View>
+              <Text style={[modal.title, { color: colors.textPrimary }]}>My Posts</Text>
+              <TouchableOpacity onPress={() => setShowMyPosts(false)}>
+                <Feather name="x" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {myPosts.length === 0 ? (
+              <View style={modal.emptyState}>
+                <Feather name="edit-3" size={40} color={colors.textMuted} />
+                <Text style={[modal.emptyTitle, { color: colors.textPrimary }]}>No posts yet</Text>
+                <Text style={[modal.emptyHint, { color: colors.textSecondary }]}>
+                  Your confessions will appear here once you post something.
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={myPosts}
+                keyExtractor={p => p.id}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+                renderItem={({ item }) => (
+                  <PostCard
+                    post={item}
+                    onPress={() => {
+                      setShowMyPosts(false);
+                      navigation.navigate('PostDetails', { postId: item.id });
+                    }}
+                    onLike={() => toggleLike(item.id)}
+                  />
+                )}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -339,14 +408,17 @@ export default function ProfileScreen() {
           <Text style={[styles.nameHint, { color: colors.textSecondary }]}>Your identity is safe with us</Text>
         </View>
 
-        {/* Stats */}
+        {/* Stats — scoped to THIS user's posts only */}
         <View style={styles.statsRow}>
           {[
-            { icon: 'message-circle', value: posts.length, label: 'Posts' },
-            { icon: 'heart',          value: posts.reduce((s, p) => s + p.likes, 0), label: 'Likes' },
-            { icon: 'message-square', value: posts.reduce((s, p) => s + p.commentCount, 0), label: 'Comments' },
+            { icon: 'message-circle', value: myStats.postCount,     label: 'My Posts'  },
+            { icon: 'heart',          value: myStats.totalLikes,    label: 'Likes'     },
+            { icon: 'message-square', value: myStats.totalComments, label: 'Comments'  },
           ].map(stat => (
-            <View key={stat.label} style={[styles.statBox, S.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}>
+            <View
+              key={stat.label}
+              style={[styles.statBox, S.card, { backgroundColor: colors.bgCard, borderColor: colors.border }]}
+            >
               <Feather name={stat.icon as any} size={20} color={colors.teal} style={styles.statIcon} />
               <Text style={[styles.statValue, { color: colors.textPrimary }]}>{stat.value}</Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{stat.label}</Text>
@@ -393,54 +465,53 @@ export default function ProfileScreen() {
 }
 
 // ─── Main Styles ──────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  flash: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 },
-  pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 14, borderBottomWidth: 1 },
-  pageTitle: { fontSize: 18, ...FONTS.heading },
+  container:     { flex: 1 },
+  flash:         { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 },
+  pageHeader:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 14, borderBottomWidth: 1 },
+  pageTitle:     { fontSize: 18, ...FONTS.heading },
   avatarSection: { alignItems: 'center', paddingVertical: 28 },
-  avatarCircle: { width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
-  name: { fontSize: 22, ...FONTS.heading, marginBottom: 4 },
-  nameHint: { fontSize: 13 },
-  statsRow: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 20 },
-  statBox: { flex: 1, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center', marginHorizontal: 4, borderWidth: 1 },
-  statIcon: { marginBottom: 6 },
-  statValue: { fontSize: 18, ...FONTS.heading },
-  statLabel: { fontSize: 12 },
-  settingsCard: { marginHorizontal: 16, borderRadius: RADIUS.lg, borderWidth: 1, marginBottom: 20 },
-  settingRow: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
-  iconBox: { width: 38, height: 38, borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' },
-  rowLabel: { fontSize: 14, ...FONTS.subheading },
-  rowHint: { fontSize: 12, marginTop: 1 },
-  divider: { height: 1 },
-  logoutBtn: { marginHorizontal: 16, borderRadius: RADIUS.md, borderWidth: 1, paddingVertical: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
-  logoutText: { fontSize: 15, ...FONTS.subheading },
+  avatarCircle:  { width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center', marginBottom: 14 },
+  name:          { fontSize: 22, ...FONTS.heading, marginBottom: 4 },
+  nameHint:      { fontSize: 13 },
+  statsRow:      { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 20 },
+  statBox:       { flex: 1, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center', marginHorizontal: 4, borderWidth: 1 },
+  statIcon:      { marginBottom: 6 },
+  statValue:     { fontSize: 18, ...FONTS.heading },
+  statLabel:     { fontSize: 12 },
+  settingsCard:  { marginHorizontal: 16, borderRadius: RADIUS.lg, borderWidth: 1, marginBottom: 20 },
+  settingRow:    { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
+  iconBox:       { width: 38, height: 38, borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' },
+  rowLabel:      { fontSize: 14, ...FONTS.subheading },
+  rowHint:       { fontSize: 12, marginTop: 1 },
+  divider:       { height: 1 },
+  logoutBtn:     { marginHorizontal: 16, borderRadius: RADIUS.md, borderWidth: 1, paddingVertical: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
+  logoutText:    { fontSize: 15, ...FONTS.subheading },
 });
 
-// ─── Modal Styles (shared) ────────────────────────────────────────────────────
+// ─── Modal Styles ─────────────────────────────────────────────────────────────
+
 const modal = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
-  sheet: {
-    borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl,
-    padding: 20, paddingBottom: 36, borderWidth: 1,
-  },
-  handle: { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
-  iconBox: { width: 38, height: 38, borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' },
-  title: { flex: 1, fontSize: 17, ...FONTS.heading },
-  section: { fontSize: 11, ...FONTS.subheading, letterSpacing: 1, marginBottom: 10, marginTop: 4 },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
-  rowLabel: { fontSize: 14, ...FONTS.subheading },
-  rowHint: { fontSize: 12, marginTop: 2 },
-  divider: { height: 1, marginLeft: 0 },
-  groupCard: { borderRadius: RADIUS.md, borderWidth: 1, paddingHorizontal: 14, marginBottom: 8 },
-  saveBtn: { borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
-  saveBtnText: { color: '#fff', fontSize: 15, ...FONTS.subheading },
-  dangerBtn: { borderRadius: RADIUS.md, borderWidth: 1, paddingVertical: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 8 },
+  overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  sheet:      { borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl, padding: 20, paddingBottom: 36, borderWidth: 1 },
+  handle:     { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  titleRow:   { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
+  iconBox:    { width: 38, height: 38, borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' },
+  title:      { flex: 1, fontSize: 17, ...FONTS.heading },
+  section:    { fontSize: 11, ...FONTS.subheading, letterSpacing: 1, marginBottom: 10, marginTop: 4 },
+  row:        { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 },
+  rowLabel:   { fontSize: 14, ...FONTS.subheading },
+  rowHint:    { fontSize: 12, marginTop: 2 },
+  divider:    { height: 1, marginLeft: 0 },
+  groupCard:  { borderRadius: RADIUS.md, borderWidth: 1, paddingHorizontal: 14, marginBottom: 8 },
+  saveBtn:    { borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center', marginTop: 16 },
+  saveBtnText:{ color: '#fff', fontSize: 15, ...FONTS.subheading },
+  dangerBtn:  { borderRadius: RADIUS.md, borderWidth: 1, paddingVertical: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 8 },
   dangerText: { fontSize: 14, ...FONTS.subheading },
   emptyState: { alignItems: 'center', paddingVertical: 32, gap: 10 },
   emptyTitle: { fontSize: 16, ...FONTS.subheading },
-  emptyHint: { fontSize: 13, textAlign: 'center', lineHeight: 20, paddingHorizontal: 16 },
-  hiddenRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 10, borderWidth: 1, marginBottom: 8 },
-  unhideBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  emptyHint:  { fontSize: 13, textAlign: 'center', lineHeight: 20, paddingHorizontal: 16 },
+  hiddenRow:  { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, borderRadius: 10, borderWidth: 1, marginBottom: 8 },
+  unhideBtn:  { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
 });

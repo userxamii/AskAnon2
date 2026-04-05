@@ -1,5 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, {
+  createContext, useContext, useState,
+  useEffect, useCallback, useMemo, ReactNode,
+} from 'react';
+import { supabase } from '../lib/supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -15,6 +18,7 @@ export interface Comment {
 
 export interface Post {
   id: string;
+  userId: string | null;
   author: string;
   authorEmoji: string;
   content: string;
@@ -26,125 +30,15 @@ export interface Post {
   comments: Comment[];
 }
 
-// ─── Seed data ────────────────────────────────────────────────────────────────
+// ─── Derived counts type — always in sync with posts state ───────────────────
 
-const DEFAULT_POSTS: Post[] = [
-  {
-    id: '1', author: 'Shadow Fox', authorEmoji: '🦊',
-    content: "I secretly enjoy pineapple on pizza and I'm not ashamed anymore. 🍕",
-    likes: 24, likedByMe: false, timestamp: '1h ago', tag: 'Confession',
-    comments: [
-      { id: 'c1-1',
-      author: 'Vapor Panda', text: 'Pineapple pizza is underrated, no shame!', timestamp: '45m ago', likes: 3, likedByMe: false, authorEmoji: '🐼' },
-      { id: 'c1-2',
-      author: 'Haze Raccoon', text: 'Finally someone said it 😂', timestamp: '30m ago', likes: 1, likedByMe: false, authorEmoji: '🦝' },
-      { id: 'c1-3',
-      author: 'Void Penguin', text: 'Welcome to the pineapple club 🍍', timestamp: '20m ago', likes: 2, likedByMe: false, authorEmoji: '🐧' },
-    ],
-    commentCount: 3,
-  },
-  {
-    id: '2', author: 'Ghost Owl', authorEmoji: '🦉',
-    content: "My boss thinks I'm a genius but honestly I just Google everything really fast.",
-    likes: 89, likedByMe: false, timestamp: '2h ago', tag: 'Funny',
-    comments: [
-      { id: 'c2-1',
-      author: 'Nova Deer', text: 'That IS the genius move though 😭', timestamp: '1h ago', likes: 12, likedByMe: false, authorEmoji: '🦌' },
-      { id: 'c2-2',
-      author: 'Dusk Tiger', text: 'Speed googling is a legitimate skill, respect.', timestamp: '55m ago', likes: 8, likedByMe: false, authorEmoji: '🐯' },
-      { id: 'c2-3',
-      author: 'Cipher Wolf', text: 'I thought I was the only one doing this lmao', timestamp: '40m ago', likes: 5, likedByMe: false, authorEmoji: '🐺' },
-      { id: 'c2-4',
-      author: 'Storm Eagle', text: 'The fastest Googler in the west', timestamp: '20m ago', likes: 3, likedByMe: false, authorEmoji: '🦅' },
-    ],
-    commentCount: 4,
-  },
-  {
-    id: '3', author: 'Silent Wolf', authorEmoji: '🐺',
-    content: "I've been pretending to understand cryptocurrency for 3 years. Still no idea what a blockchain actually does.",
-    likes: 157, likedByMe: false, timestamp: '3h ago', tag: 'Confession',
-    comments: [
-      { id: 'c3-1',
-      author: 'Lunar Cat', text: "I nod along in every crypto conversation. Solidarity.", timestamp: '2h ago', likes: 22, likedByMe: false, authorEmoji: '🐱' },
-      { id: 'c3-2',
-      author: 'Neon Rabbit', text: "Nobody actually knows. It's all a shared illusion.", timestamp: '1h ago', likes: 18, likedByMe: false, authorEmoji: '🐰' },
-      { id: 'c3-3',
-      author: 'Mystic Bear', text: 'The blockchain is just a fancy spreadsheet, apparently 😅', timestamp: '50m ago', likes: 9, likedByMe: false, authorEmoji: '🐻' },
-      { id: 'c3-4',
-      author: 'Glitch Fox', text: "Three years is rookie numbers. I've been faking it for five.", timestamp: '30m ago', likes: 14, likedByMe: false, authorEmoji: '🦊' },
-      { id: 'c3-5',
-      author: 'Vapor Panda', text: 'This comment section is therapy', timestamp: '10m ago', likes: 6, likedByMe: false, authorEmoji: '🐼' },
-    ],
-    commentCount: 5,
-  },
-  {
-    id: '4', author: 'Mystic Bear', authorEmoji: '🐻',
-    content: "Sometimes I reply to emails days later and pretend I never got them the first time.",
-    likes: 61, likedByMe: false, timestamp: '4h ago', tag: 'Funny',
-    comments: [
-      { id: 'c4-1',
-      author: 'Haze Raccoon', text: 'This is a valid life strategy actually', timestamp: '3h ago', likes: 7, likedByMe: false, authorEmoji: '🦝' },
-      { id: 'c4-2',
-      author: 'Void Penguin', text: 'My read receipts are off for exactly this reason', timestamp: '2h ago', likes: 4, likedByMe: false, authorEmoji: '🐧' },
-      { id: 'c4-3',
-      author: 'Nova Deer', text: '"Sorry just saw this!" — me, opening the email for the 4th time', timestamp: '1h ago', likes: 11, likedByMe: false, authorEmoji: '🦌' },
-    ],
-    commentCount: 3,
-  },
-  {
-    id: '5', author: 'Lunar Cat', authorEmoji: '🐱',
-    content: "I still sleep with the lights on. I'm 22. I'm not embarrassed.",
-    likes: 43, likedByMe: false, timestamp: '5h ago', tag: 'Confession',
-    comments: [
-      { id: 'c5-1',
-      author: 'Glitch Fox', text: "You shouldn't be! Comfort > everything.", timestamp: '4h ago', likes: 5, likedByMe: false, authorEmoji: '🦊' },
-      { id: 'c5-2',
-      author: 'Cipher Wolf', text: 'I do this too. The dark is scary, period.', timestamp: '3h ago', likes: 3, likedByMe: false, authorEmoji: '🐺' },
-    ],
-    commentCount: 2,
-  },
-  {
-    id: '7', author: 'Storm Eagle', authorEmoji: '🦅',
-    content: "Spent 3 hours today in a meeting that could have been an email. I smiled the whole time.",
-    likes: 34, likedByMe: false, timestamp: '7h ago', tag: 'Work',
-    comments: [
-      { id: 'c7-1', author: 'Vapor Panda', text: 'Every. Single. Day.', timestamp: '6h ago', likes: 8, likedByMe: false, authorEmoji: '🐼' },
-      { id: 'c7-2', author: 'Cipher Wolf', text: 'The smile is a survival mechanism', timestamp: '5h ago', likes: 5, likedByMe: false, authorEmoji: '🐺' },
-    ],
-    commentCount: 2,
-  },
-  {
-    id: '8', author: 'Vapor Panda', authorEmoji: '🐼',
-    content: "Does anyone else wonder if we're all just NPCs in someone else's game? Like... what if Tuesday doesn't exist when I'm not looking at it?",
-    likes: 76, likedByMe: false, timestamp: '8h ago', tag: 'Deep Thoughts',
-    comments: [
-      { id: 'c8-1', author: 'Glitch Fox', text: 'I need to lie down after reading this', timestamp: '7h ago', likes: 11, likedByMe: false, authorEmoji: '🦊' },
-      { id: 'c8-2', author: 'Nova Deer', text: 'Tuesday definitely gives off suspicious vibes', timestamp: '6h ago', likes: 9, likedByMe: false, authorEmoji: '🦌' },
-      { id: 'c8-3', author: 'Lunar Cat', text: '3am thoughts hitting different', timestamp: '5h ago', likes: 7, likedByMe: false, authorEmoji: '🐱' },
-    ],
-    commentCount: 3,
-  },
-  {
-    id: '6', author: 'Neon Rabbit', authorEmoji: '🐰',
-    content: "I once cried watching a dog food commercial. The dog looked so happy.",
-    likes: 210, likedByMe: false, timestamp: '6h ago', tag: 'Wholesome',
-    comments: [
-      { id: 'c6-1',
-      author: 'Lunar Cat', text: 'That commercial gets me every time 😭', timestamp: '5h ago', likes: 24, likedByMe: false, authorEmoji: '🐱' },
-      { id: 'c6-2',
-      author: 'Mystic Bear', text: 'Happy dogs deserve happy tears', timestamp: '4h ago', likes: 18, likedByMe: false, authorEmoji: '🐻' },
-      { id: 'c6-3',
-      author: 'Storm Eagle', text: 'You have a good heart, never change', timestamp: '3h ago', likes: 12, likedByMe: false, authorEmoji: '🦅' },
-      { id: 'c6-4',
-      author: 'Vapor Panda', text: "I'm crying just reading this", timestamp: '2h ago', likes: 9, likedByMe: false, authorEmoji: '🐼' },
-      { id: 'c6-5',
-      author: 'Haze Raccoon', text: 'Same energy as crying at a Pixar movie', timestamp: '1h ago', likes: 7, likedByMe: false, authorEmoji: '🦝' },
-      { id: 'c6-6',
-      author: 'Dusk Tiger', text: 'Dogs are pure love and this is valid 🐶', timestamp: '30m ago', likes: 5, likedByMe: false, authorEmoji: '🐯' },
-    ],
-    commentCount: 6,
-  },
-];
+export interface UserStats {
+  postCount:    number;   // number of posts this user made
+  totalLikes:   number;   // sum of likes on their posts
+  totalComments: number;  // sum of comments on their posts
+}
+
+// ─── Random-author fallback pools ─────────────────────────────────────────────
 
 const ANIMAL_AUTHORS = [
   { author: 'Storm Eagle',  authorEmoji: '🦅' },
@@ -157,162 +51,395 @@ const ANIMAL_AUTHORS = [
   { author: 'Cipher Wolf',  authorEmoji: '🐺' },
 ];
 
-const ANIMAL_EMOJIS = ['🐻','🦊','🐺','🦁','🐯','🐼','🐨','🦝','🐧','🦅','🦌','🐱'];
 const COMMENT_AUTHORS = [
-  { author: 'Storm Eagle',  authorEmoji: '🦅' },
-  { author: 'Vapor Panda',  authorEmoji: '🐼' },
-  { author: 'Dusk Tiger',   authorEmoji: '🐯' },
-  { author: 'Glitch Fox',   authorEmoji: '🦊' },
-  { author: 'Void Penguin', authorEmoji: '🐧' },
-  { author: 'Haze Raccoon', authorEmoji: '🦝' },
-  { author: 'Nova Deer',    authorEmoji: '🦌' },
-  { author: 'Cipher Wolf',  authorEmoji: '🐺' },
-  { author: 'Lunar Cat',    authorEmoji: '🐱' },
-  { author: 'Neon Rabbit',  authorEmoji: '🐰' },
-  { author: 'Mystic Bear',  authorEmoji: '🐻' },
+  ...ANIMAL_AUTHORS,
+  { author: 'Lunar Cat',   authorEmoji: '🐱' },
+  { author: 'Neon Rabbit', authorEmoji: '🐰' },
+  { author: 'Mystic Bear', authorEmoji: '🐻' },
 ];
 
-const STORAGE_KEY = 'askanon_posts_v5';
+const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
-// ─── Context ──────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function rowToPost(
+  row: any,
+  likedPostIds: Set<string>,
+  commentRows: any[],
+  likedCommentIds: Set<string>,
+): Post {
+  const comments: Comment[] = commentRows
+    .filter(c => c.post_id === row.id)
+    .map(c => ({
+      id:          c.id,
+      author:      c.author,
+      authorEmoji: c.author_emoji,
+      text:        c.text,
+      timestamp:   friendlyDate(c.created_at),
+      likes:       c.likes ?? 0,
+      likedByMe:   likedCommentIds.has(c.id),
+    }));
+
+  return {
+    id:           row.id,
+    userId:       row.user_id ?? null,
+    author:       row.author,
+    authorEmoji:  row.author_emoji,
+    content:      row.content,
+    tag:          row.tag,
+    likes:        row.likes ?? 0,
+    likedByMe:    likedPostIds.has(row.id),
+    // always derive commentCount from the actual comments array
+    // so it stays in sync with optimistic inserts
+    commentCount: comments.length,
+    timestamp:    friendlyDate(row.created_at),
+    comments,
+  };
+}
+
+function friendlyDate(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+// ─── Context type ─────────────────────────────────────────────────────────────
 
 type PostsContextType = {
-  posts: Post[];
-  loading: boolean;
-  hiddenIds: string[];
-  savedIds: string[];
-  addPost: (content: string, tag: string) => void;
-  toggleLike: (postId: string) => void;
-  addComment: (postId: string, text: string) => void;
-  toggleCommentLike: (postId: string, commentId: string) => void;
-  toggleHide: (postId: string) => void;
-  toggleSave: (postId: string) => void;
+  posts:        Post[];
+  myPosts:      Post[];
+  myStats:      UserStats;      // ← live counts, always in sync
+  myUserId:     string | null;
+  loading:      boolean;
+  hiddenIds:    string[];
+  savedIds:     string[];
+  addPost:           (content: string, tag: string) => Promise<void>;
+  toggleLike:        (postId: string) => Promise<void>;
+  addComment:        (postId: string, text: string) => Promise<void>;
+  toggleCommentLike: (postId: string, commentId: string) => Promise<void>;
+  toggleHide:        (postId: string) => void;
+  toggleSave:        (postId: string) => Promise<void>;
+  refreshPosts:      () => Promise<void>;
 };
 
 const PostsContext = createContext<PostsContextType>({
-  posts: [], loading: true,
-  hiddenIds: [], savedIds: [],
-  addPost: () => {}, toggleLike: () => {},
-  addComment: () => {}, toggleCommentLike: () => {},
-  toggleHide: () => {}, toggleSave: () => {},
+  posts: [], myPosts: [], myStats: { postCount: 0, totalLikes: 0, totalComments: 0 },
+  myUserId: null, loading: true, hiddenIds: [], savedIds: [],
+  addPost: async () => {}, toggleLike: async () => {},
+  addComment: async () => {}, toggleCommentLike: async () => {},
+  toggleHide: () => {}, toggleSave: async () => {},
+  refreshPosts: async () => {},
 });
 
-const HIDDEN_KEY = 'askanon_hidden_v1';
-const SAVED_KEY  = 'askanon_saved_v1';
+// ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function PostsProvider({ children }: { children: ReactNode }) {
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [posts,     setPosts]     = useState<Post[]>([]);
+  const [loading,   setLoading]   = useState(true);
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
-  const [savedIds, setSavedIds]   = useState<string[]>([]);
+  const [savedIds,  setSavedIds]  = useState<string[]>([]);
+  const [myUserId,  setMyUserId]  = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [stored, hiddenRaw, savedRaw] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEY),
-          AsyncStorage.getItem(HIDDEN_KEY),
-          AsyncStorage.getItem(SAVED_KEY),
-        ]);
-        if (hiddenRaw) setHiddenIds(JSON.parse(hiddenRaw));
-        if (savedRaw)  setSavedIds(JSON.parse(savedRaw));
-        if (stored) {
-          const parsed: Post[] = JSON.parse(stored);
-          // migration: ensure every post has comments array
-          setPosts(parsed.map(p => ({
-            ...p,
-            comments: p.comments ?? [],
-            commentCount: p.comments ? p.comments.length : p.commentCount,
-          })));
-        } else {
-          setPosts(DEFAULT_POSTS);
-          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_POSTS));
-        }
-      } catch {
-        setPosts(DEFAULT_POSTS);
-      } finally {
-        setLoading(false);
-      }
-    })();
+  // ── Derived values — recompute instantly on every posts state change ──────────
+
+  const myPosts = useMemo(
+    () => posts.filter(p => p.userId === myUserId),
+    [posts, myUserId],
+  );
+
+  // myStats is always computed from myPosts, so every optimistic update
+  // (new post, new comment, like toggle) automatically updates the counts.
+  const myStats = useMemo<UserStats>(() => ({
+    postCount:     myPosts.length,
+    totalLikes:    myPosts.reduce((sum, p) => sum + p.likes, 0),
+    totalComments: myPosts.reduce((sum, p) => sum + p.commentCount, 0),
+  }), [myPosts]);
+
+  // ── Core fetch ───────────────────────────────────────────────────────────────
+
+  const refreshPosts = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id ?? null;
+      setMyUserId(userId);
+
+      const [
+        { data: postRows     },
+        { data: commentRows  },
+        { data: postLikes    },
+        { data: savedRows    },
+        { data: commentLikes },
+      ] = await Promise.all([
+        supabase.from('posts').select('*').order('created_at', { ascending: false }),
+        supabase.from('comments').select('*').order('created_at', { ascending: true }),
+        userId
+          ? supabase.from('post_likes').select('post_id').eq('user_id', userId)
+          : Promise.resolve({ data: [] }),
+        userId
+          ? supabase.from('saved_posts').select('post_id').eq('user_id', userId)
+          : Promise.resolve({ data: [] }),
+        userId
+          ? supabase.from('comment_likes').select('comment_id').eq('user_id', userId)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const likedPostIds    = new Set((postLikes    ?? []).map((r: any) => r.post_id));
+      const likedCommentIds = new Set((commentLikes ?? []).map((r: any) => r.comment_id));
+      const savedPostIds    = new Set((savedRows    ?? []).map((r: any) => r.post_id));
+
+      setSavedIds(Array.from(savedPostIds) as string[]);
+      setPosts(
+        (postRows ?? []).map((row: any) =>
+          rowToPost(row, likedPostIds, commentRows ?? [], likedCommentIds)
+        )
+      );
+    } catch (err) {
+      console.error('refreshPosts error:', err);
+    }
   }, []);
 
-  const save = (updated: Post[]) => {
-    setPosts(updated);
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated)).catch(() => {});
-  };
+  // ── Initial load ─────────────────────────────────────────────────────────────
 
-  const addPost = (content: string, tag: string) => {
-    const pick = ANIMAL_AUTHORS[Math.floor(Math.random() * ANIMAL_AUTHORS.length)];
-    const newPost: Post = {
-      id: Date.now().toString(),
-      author: pick.author,
-      authorEmoji: pick.authorEmoji,
-      content, tag,
-      likes: 0, likedByMe: false,
-      commentCount: 0,
-      timestamp: 'just now',
-      comments: [],
+  useEffect(() => {
+    setLoading(true);
+    refreshPosts().finally(() => setLoading(false));
+  }, [refreshPosts]);
+
+  // ── Realtime — handles changes from OTHER users/devices ───────────────────────
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('public-feed')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' },    () => refreshPosts())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'posts' },    () => refreshPosts())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, () => refreshPosts())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'comments' }, () => refreshPosts())
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [refreshPosts]);
+
+  // ── Re-fetch on auth change ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+      refreshPosts();
+    });
+    return () => subscription.unsubscribe();
+  }, [refreshPosts]);
+
+  // ── Actions ───────────────────────────────────────────────────────────────────
+
+  const addPost = async (content: string, tag: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('nickname, avatar_emoji')
+      .eq('id', user.id)
+      .single();
+
+    const fallback    = pick(ANIMAL_AUTHORS);
+    const author      = profile?.nickname     ?? fallback.author;
+    const authorEmoji = profile?.avatar_emoji ?? fallback.authorEmoji;
+
+    // 1 — Optimistic insert → postCount goes up immediately
+    const tempId = `temp-${Date.now()}`;
+    const optimisticPost: Post = {
+      id: tempId, userId: user.id,
+      author, authorEmoji, content, tag,
+      likes: 0, likedByMe: false, commentCount: 0,
+      timestamp: 'just now', comments: [],
     };
-    save([newPost, ...posts]);
+    setPosts(prev => [optimisticPost, ...prev]);
+
+    // 2 — Write to DB
+    const { data: inserted, error } = await supabase
+      .from('posts')
+      .insert({ user_id: user.id, author, author_emoji: authorEmoji, content, tag, likes: 0, comment_count: 0 })
+      .select()
+      .single();
+
+    if (error) {
+      setPosts(prev => prev.filter(p => p.id !== tempId)); // roll back
+      console.error('addPost error:', error);
+      return;
+    }
+
+    // 3 — Swap temp with real DB row
+    setPosts(prev =>
+      prev.map(p =>
+        p.id === tempId
+          ? { ...optimisticPost, id: inserted.id, timestamp: friendlyDate(inserted.created_at) }
+          : p
+      )
+    );
   };
 
-  const toggleLike = (postId: string) =>
-    save(posts.map(p =>
+  const toggleLike = async (postId: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+
+    const delta = post.likedByMe ? -1 : 1;
+
+    // Optimistic → totalLikes in myStats updates immediately if it's the user's own post
+    setPosts(prev => prev.map(p =>
       p.id === postId
-        ? { ...p, likes: p.likedByMe ? p.likes - 1 : p.likes + 1, likedByMe: !p.likedByMe }
+        ? { ...p, likes: p.likes + delta, likedByMe: !p.likedByMe }
         : p
     ));
 
-  const addComment = (postId: string, text: string) => {
-    const pick = COMMENT_AUTHORS[Math.floor(Math.random() * COMMENT_AUTHORS.length)];
-    const newComment: Comment = {
-      id: `${postId}-${Date.now()}`,
-      author: pick.author,
-      text,
-      timestamp: 'just now',
-      likes: 0,
-      likedByMe: false,
-      authorEmoji: pick.authorEmoji,
-    };
-    save(posts.map(p =>
-      p.id === postId
-        ? { ...p, comments: [...p.comments, newComment], commentCount: p.comments.length + 1 }
-        : p
-    ));
+    if (post.likedByMe) {
+      await supabase.from('post_likes').delete().eq('user_id', user.id).eq('post_id', postId);
+      await supabase.from('posts').update({ likes: post.likes - 1 }).eq('id', postId);
+    } else {
+      await supabase.from('post_likes').insert({ user_id: user.id, post_id: postId });
+      await supabase.from('posts').update({ likes: post.likes + 1 }).eq('id', postId);
+    }
   };
 
-  const toggleCommentLike = (postId: string, commentId: string) =>
-    save(posts.map(p =>
+  const addComment = async (postId: string, text: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('nickname, avatar_emoji')
+      .eq('id', user.id)
+      .single();
+
+    const fallback    = pick(COMMENT_AUTHORS);
+    const author      = profile?.nickname     ?? fallback.author;
+    const authorEmoji = profile?.avatar_emoji ?? fallback.authorEmoji;
+
+    // 1 — Optimistic insert → commentCount on the post goes up immediately,
+    //     which also updates totalComments in myStats if it's the user's post
+    const tempId = `temp-${Date.now()}`;
+    const optimisticComment: Comment = {
+      id: tempId, author, authorEmoji, text,
+      timestamp: 'just now', likes: 0, likedByMe: false,
+    };
+
+    setPosts(prev => prev.map(p =>
+      p.id === postId
+        ? { ...p, comments: [...p.comments, optimisticComment], commentCount: p.commentCount + 1 }
+        : p
+    ));
+
+    // 2 — Write to DB
+    const { data: inserted, error } = await supabase
+      .from('comments')
+      .insert({ post_id: postId, user_id: user.id, author, author_emoji: authorEmoji, text, likes: 0 })
+      .select()
+      .single();
+
+    if (error) {
+      // Roll back
+      setPosts(prev => prev.map(p =>
+        p.id === postId
+          ? { ...p, comments: p.comments.filter(c => c.id !== tempId), commentCount: p.commentCount - 1 }
+          : p
+      ));
+      console.error('addComment error:', error);
+      return;
+    }
+
+    // 3 — Swap temp comment with real DB row
+    setPosts(prev => prev.map(p =>
       p.id === postId
         ? {
             ...p,
             comments: p.comments.map(c =>
-              c.id === commentId
-                ? { ...c, likes: c.likedByMe ? c.likes - 1 : c.likes + 1, likedByMe: !c.likedByMe }
+              c.id === tempId
+                ? { ...optimisticComment, id: inserted.id, timestamp: friendlyDate(inserted.created_at) }
                 : c
             ),
           }
         : p
     ));
 
-  const toggleHide = (postId: string) => {
-    setHiddenIds(prev => {
-      const next = prev.includes(postId) ? prev.filter(id => id !== postId) : [...prev, postId];
-      AsyncStorage.setItem(HIDDEN_KEY, JSON.stringify(next)).catch(() => {});
-      return next;
-    });
+    // 4 — Sync comment_count column in DB
+    const post = posts.find(p => p.id === postId);
+    if (post) {
+      await supabase.from('posts')
+        .update({ comment_count: post.commentCount + 1 })
+        .eq('id', postId);
+    }
   };
 
-  const toggleSave = (postId: string) => {
-    setSavedIds(prev => {
-      const next = prev.includes(postId) ? prev.filter(id => id !== postId) : [...prev, postId];
-      AsyncStorage.setItem(SAVED_KEY, JSON.stringify(next)).catch(() => {});
-      return next;
-    });
+  const toggleCommentLike = async (postId: string, commentId: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const post    = posts.find(p => p.id === postId);
+    const comment = post?.comments.find(c => c.id === commentId);
+    if (!comment) return;
+
+    const delta = comment.likedByMe ? -1 : 1;
+
+    // Optimistic update
+    setPosts(prev => prev.map(p =>
+      p.id === postId
+        ? {
+            ...p,
+            comments: p.comments.map(c =>
+              c.id === commentId
+                ? { ...c, likes: c.likes + delta, likedByMe: !c.likedByMe }
+                : c
+            ),
+          }
+        : p
+    ));
+
+    if (comment.likedByMe) {
+      await supabase.from('comment_likes').delete().eq('user_id', user.id).eq('comment_id', commentId);
+      await supabase.from('comments').update({ likes: comment.likes - 1 }).eq('id', commentId);
+    } else {
+      await supabase.from('comment_likes').insert({ user_id: user.id, comment_id: commentId });
+      await supabase.from('comments').update({ likes: comment.likes + 1 }).eq('id', commentId);
+    }
   };
+
+  const toggleHide = (postId: string) => {
+    setHiddenIds(prev =>
+      prev.includes(postId) ? prev.filter(id => id !== postId) : [...prev, postId]
+    );
+  };
+
+  const toggleSave = async (postId: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const isSaved = savedIds.includes(postId);
+
+    setSavedIds(prev =>
+      isSaved ? prev.filter(id => id !== postId) : [...prev, postId]
+    );
+
+    if (isSaved) {
+      await supabase.from('saved_posts').delete().eq('user_id', user.id).eq('post_id', postId);
+    } else {
+      await supabase.from('saved_posts').insert({ user_id: user.id, post_id: postId });
+    }
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <PostsContext.Provider value={{ posts, loading, hiddenIds, savedIds, addPost, toggleLike, addComment, toggleCommentLike, toggleHide, toggleSave }}>
+    <PostsContext.Provider value={{
+      posts, myPosts, myStats, myUserId,
+      loading, hiddenIds, savedIds,
+      addPost, toggleLike, addComment, toggleCommentLike,
+      toggleHide, toggleSave, refreshPosts,
+    }}>
       {children}
     </PostsContext.Provider>
   );

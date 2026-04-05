@@ -1,6 +1,7 @@
-import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useEffect, useState, useRef } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { View, Text, StyleSheet, Platform, ActivityIndicator } from 'react-native';
+import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
@@ -15,9 +16,12 @@ import PostDetailsScreen from '../screens/PostDetailsScreen';
 
 import { RootStackParamList, TabParamList } from '../types/navigation';
 import { useTheme, FONTS } from '../context/ThemeContext';
+import { supabase } from '../lib/supabase';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab   = createBottomTabNavigator<TabParamList>();
+
+// ── Bottom tab navigator ──────────────────────────────────────────────────────
 
 function MainTabs() {
   const { colors } = useTheme();
@@ -97,19 +101,71 @@ function MainTabs() {
   );
 }
 
+// ── Root navigator ────────────────────────────────────────────────────────────
+
 export default function AppNavigator() {
+  const { colors } = useTheme();
+
+  // undefined = still resolving  |  null = no session  |  Session = logged in
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
+
+  // A ref to the NavigationContainer so we can imperatively navigate
+  // from inside the onAuthStateChange callback once the navigator is ready.
+  const navRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+  const navReady = useRef(false);
+
+  useEffect(() => {
+    // 1 — Restore any persisted session on launch
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session ?? null);
+    });
+
+    // 2 — React to every auth event (sign-in, sign-out, token refresh…)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession ?? null);
+
+      // Imperatively redirect once the navigator is mounted
+      if (navReady.current && navRef.current) {
+        if (newSession) {
+          // Signed in → go to Main, clear history
+          navRef.current.reset({ index: 0, routes: [{ name: 'Main' }] });
+        } else {
+          // Signed out → go to Splash, clear history
+          navRef.current.reset({ index: 0, routes: [{ name: 'Splash' }] });
+        }
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // ── Loading screen while session resolves ─────────────────────────────────
+
+  if (session === undefined) {
+    return (
+      <View style={[styles.loadingScreen, { backgroundColor: colors.bg }]}>
+        <ActivityIndicator size="large" color={colors.teal} />
+      </View>
+    );
+  }
+
+  // ── Always register ALL screens so reset() can always find them ──────────
+
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      ref={navRef}
+      onReady={() => { navReady.current = true; }}
+    >
       <Stack.Navigator
-        initialRouteName="Splash"
+        initialRouteName={session ? 'Main' : 'Splash'}
         screenOptions={{
           headerShown: false,
-          // Smooth fade+slide transition for all stack screens
           animation: 'fade_from_bottom',
           animationDuration: 280,
           contentStyle: { backgroundColor: 'transparent' },
         }}
       >
+        {/* Auth flow — always registered so reset() can reach them */}
         <Stack.Screen
           name="Splash"
           component={SplashScreen}
@@ -120,6 +176,8 @@ export default function AppNavigator() {
           component={AuthScreen}
           options={{ gestureEnabled: false, animation: 'fade' }}
         />
+
+        {/* App flow */}
         <Stack.Screen
           name="Main"
           component={MainTabs}
@@ -141,6 +199,7 @@ export default function AppNavigator() {
 }
 
 const styles = StyleSheet.create({
-  tabItem:  { alignItems: 'center', justifyContent: 'center', gap: 2 },
-  tabLabel: { fontSize: 11, ...FONTS.medium },
+  tabItem:       { alignItems: 'center', justifyContent: 'center', gap: 2 },
+  tabLabel:      { fontSize: 11, ...FONTS.medium },
+  loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 });
